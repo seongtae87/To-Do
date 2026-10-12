@@ -19,7 +19,7 @@
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.45 -apple-system, "Noto Sans KR", "Malgun Gothic", sans-serif;
-    padding: env(safe-area-inset-top) 0 calc(90px + env(safe-area-inset-bottom));
+    padding: env(safe-area-inset-top) 0 calc(150px + env(safe-area-inset-bottom));
   }
   header { padding: 18px 16px 2px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   h1 { font-size: 24px; margin: 0; }
@@ -73,6 +73,37 @@
     border: 1px solid var(--line); background: var(--card); color: var(--sub);
     border-radius: 8px; padding: 6px 10px; font-size: 13px;
   }
+  /* 달력 */
+  .cal { padding: 4px 12px 0; }
+  .calhead { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px; }
+  .calhead b { font-size: 17px; }
+  .calhead button {
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    border-radius: 8px; padding: 4px 10px; font-size: 14px;
+  }
+  .calhead .nav { display: flex; gap: 6px; }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .wd { text-align: center; font-size: 12px; color: var(--sub); padding: 2px 0; }
+  .wd.sun, .day.sun .dn { color: var(--danger); }
+  .wd.sat, .day.sat .dn { color: var(--accent); }
+  .day {
+    min-height: 62px; background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 3px; overflow: hidden; display: flex; flex-direction: column; gap: 1px; cursor: pointer;
+  }
+  .day.out { opacity: .35; }
+  .day.today { border-color: var(--accent); border-width: 2px; }
+  .day.sel { background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+  .dn { font-size: 12px; font-weight: 600; }
+  .ev {
+    font-size: 10px; line-height: 1.3; border-radius: 3px; padding: 0 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: clip; letter-spacing: -0.3px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text);
+  }
+  .ev.hi { background: color-mix(in srgb, #f59e0b 28%, transparent); }
+  .ev.late { background: color-mix(in srgb, var(--danger) 22%, transparent); }
+  .ev.done { background: none; color: var(--sub); text-decoration: line-through; }
+  .more { font-size: 10px; color: var(--sub); padding: 0 3px; }
+  .dayhead { font-size: 14px; color: var(--sub); padding: 12px 16px 0; }
   dialog {
     border: none; border-radius: 14px; padding: 18px; width: min(92vw, 420px);
     background: var(--card); color: var(--text);
@@ -97,6 +128,7 @@
   <button data-f="todo" class="on">남은 일</button>
   <button data-f="all">전체</button>
   <button data-f="done">완료</button>
+  <button data-f="cal">달력</button>
 </div>
 <div id="list"></div>
 <div class="tools">
@@ -263,16 +295,8 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
-function render() {
-  const shown = db.tasks
-    .filter((t) => filter === "all" || (filter === "done" ? t.done : !t.done))
-    .sort(sortKey);
-  $("#count").textContent = `남은 일 ${db.tasks.filter((t) => !t.done).length}개`;
-  if (!shown.length) {
-    $("#list").innerHTML = `<div class="empty">${filter === "done" ? "완료한 일이 없어요" : "할 일이 없어요 🎉"}</div>`;
-    return;
-  }
-  $("#list").innerHTML = "<ul>" + shown.map((t) => `
+function itemsHTML(list) {
+  return "<ul>" + list.map((t) => `
     <li class="${t.done ? "done" : ""}" data-id="${t.id}">
       <button class="chk" data-act="toggle">${t.done ? "✓" : ""}</button>
       <div class="body" data-act="edit">
@@ -282,6 +306,86 @@ function render() {
       <button class="del" data-act="del" aria-label="삭제">×</button>
     </li>`).join("") + "</ul>";
 }
+
+function render() {
+  $("#count").textContent = `남은 일 ${db.tasks.filter((t) => !t.done).length}개`;
+  if (filter === "cal") return renderCal();
+  const shown = db.tasks
+    .filter((t) => filter === "all" || (filter === "done" ? t.done : !t.done))
+    .sort(sortKey);
+  $("#list").innerHTML = shown.length ? itemsHTML(shown)
+    : `<div class="empty">${filter === "done" ? "완료한 일이 없어요" : "할 일이 없어요 🎉"}</div>`;
+}
+
+// ---------- 달력 ----------
+
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+let calMonth = new Date(today().getFullYear(), today().getMonth(), 1);
+let selDay = ymd(today());
+
+function renderCal() {
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  const start = new Date(y, m, 1 - new Date(y, m, 1).getDay()); // 일요일 시작
+  const todayStr = ymd(today());
+  const byDay = {};
+  for (const t of db.tasks) if (t.due) (byDay[t.due] ||= []).push(t);
+  Object.values(byDay).forEach((l) => l.sort(sortKey));
+
+  let cells = "";
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    if (i >= 35 && d.getMonth() !== m) break; // 마지막 줄이 전부 다음 달이면 생략
+    const key = ymd(d), list = byDay[key] || [];
+    const cls = ["day", d.getMonth() !== m && "out", key === todayStr && "today", key === selDay && "sel",
+                 d.getDay() === 0 && "sun", d.getDay() === 6 && "sat"].filter(Boolean).join(" ");
+    const evs = list.slice(0, 3).map((t) => {
+      const c = t.done ? "done" : key < todayStr ? "late" : t.prio === "high" ? "hi" : "";
+      return `<div class="ev ${c}" title="${esc((t.time ? t.time + " " : "") + t.title)}">${esc(t.title)}</div>`;
+    }).join("") + (list.length > 3 ? `<div class="more">+${list.length - 3}</div>` : "");
+    cells += `<div class="${cls}" data-day="${key}"><span class="dn">${d.getDate()}</span>${evs}</div>`;
+  }
+
+  const [sy, sm, sd] = selDay.split("-").map(Number);
+  const dayList = (byDay[selDay] || []);
+  const noDue = db.tasks.filter((t) => !t.due && !t.done).sort(sortKey);
+  $("#list").innerHTML = `
+    <div class="cal">
+      <div class="calhead">
+        <b>${y}년 ${m + 1}월</b>
+        <div class="nav">
+          <button data-cal="-1" aria-label="이전 달">‹</button>
+          <button data-cal="0">오늘</button>
+          <button data-cal="1" aria-label="다음 달">›</button>
+        </div>
+      </div>
+      <div class="grid">
+        ${"일월화수목금토".split("").map((w, i) => `<div class="wd ${i === 0 ? "sun" : i === 6 ? "sat" : ""}">${w}</div>`).join("")}
+        ${cells}
+      </div>
+    </div>
+    <div class="dayhead">${sm}/${sd}(${"일월화수목금토"[new Date(sy, sm - 1, sd).getDay()]}) 할 일 ${dayList.length}개 · 아래에서 추가하면 이 날짜로 들어가요</div>
+    ${dayList.length ? itemsHTML(dayList) : '<div class="empty" style="padding:16px 0">이 날은 할 일이 없어요</div>'}
+    ${noDue.length ? `<div class="dayhead">마감 없는 할 일 ${noDue.length}개</div>` + itemsHTML(noDue) : ""}`;
+  $("#due").value = selDay;
+}
+
+$("#list").addEventListener("click", (e) => {
+  const nav = e.target.closest("[data-cal]");
+  if (nav) {
+    const n = Number(nav.dataset.cal);
+    if (n === 0) { calMonth = new Date(today().getFullYear(), today().getMonth(), 1); selDay = ymd(today()); }
+    else calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + n, 1);
+    render();
+    return;
+  }
+  const day = e.target.closest("[data-day]");
+  if (day) {
+    selDay = day.dataset.day;
+    const [y, m] = selDay.split("-").map(Number);
+    calMonth = new Date(y, m - 1, 1);
+    render();
+  }
+});
 
 const now = () => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const find = (data, id) => data.tasks.find((x) => x.id === id);
@@ -321,13 +425,15 @@ $("#form").addEventListener("submit", (e) => {
   if (!title) return;
   const item = { title, due: $("#due").value || null, time: $("#time").value || null,
                  prio: $("#imp").checked ? "high" : "normal", note: null, done: false };
-  $("#text").value = ""; $("#due").value = ""; $("#time").value = ""; $("#imp").checked = false;
+  $("#text").value = ""; $("#due").value = filter === "cal" ? selDay : ""; $("#time").value = ""; $("#imp").checked = false;
   act((d) => { d.tasks.push({ id: d.next_id++, ...item, created: now() }); }, "추가 " + title);
 });
 
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
   document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
-  filter = b.dataset.f; render();
+  filter = b.dataset.f;
+  if (filter !== "cal") $("#due").value = "";
+  render();
 }));
 
 $("#clearDone").addEventListener("click", () => {
