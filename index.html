@@ -153,7 +153,7 @@
     <h2>비서봇 동기화</h2>
     <p>비공개 GitHub 저장소의 할 일 목록을 회사 비서봇과 같이 씁니다. 토큰은 이 기기에만 저장됩니다.</p>
     <label for="repo">저장소 (아이디/이름)</label>
-    <input type="text" id="repo" placeholder="seongtae87/todo-data" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input type="text" id="repo" placeholder="seongtae87/todo" autocapitalize="off" autocorrect="off" spellcheck="false">
     <label for="token">접근 토큰 (fine-grained, 이 저장소 Contents 읽기·쓰기)</label>
     <input type="password" id="token" placeholder="github_pat_..." autocapitalize="off" autocorrect="off" spellcheck="false">
     <div class="btns">
@@ -452,7 +452,7 @@ $("#refresh").addEventListener("click", () => cfg ? refresh() : render());
 // ---------- 동기화 설정 ----------
 
 $("#settings").addEventListener("click", () => {
-  $("#repo").value = cfg?.repo || "seongtae87/todo-data";
+  $("#repo").value = cfg?.repo || "seongtae87/todo";
   $("#token").value = cfg?.token || "";
   $("#dlg").showModal();
 });
