@@ -1,5 +1,5 @@
 // 오프라인에서도 열리도록 앱 파일을 캐시한다. 앱을 고치면 VERSION을 올릴 것.
-const VERSION = "todo-v5";
+const VERSION = "todo-v6";
 const FILES = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {

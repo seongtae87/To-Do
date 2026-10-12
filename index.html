@@ -262,8 +262,16 @@ function setSync(text, cls = "") {
   el.className = cfg ? cls : "";
 }
 
+let saving = false;
 async function act(fn, message) {
-  try { await mutate(fn, message); } catch (e) { setSync("⚠ " + e.message, "err"); alert(e.message); }
+  // 저장(1~2초) 중 연타하면 체크가 왔다 갔다 하므로 막고, 화면은 누르는 즉시 바꿔 보여줌
+  if (saving) { setSync("저장 중이에요. 잠시만요…"); return; }
+  saving = true;
+  const before = JSON.stringify(db);
+  if (cfg) { fn(db); render(); }
+  try { await mutate(fn, message); }
+  catch (e) { db = JSON.parse(before); render(); setSync("⚠ " + e.message, "err"); alert(e.message); }
+  finally { saving = false; }
 }
 
 // ---------- 화면 ----------
