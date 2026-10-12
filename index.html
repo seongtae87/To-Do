@@ -10,7 +10,7 @@
 <style>
   :root {
     --bg: #f5f6f8; --card: #fff; --text: #1f2328; --sub: #6b7280;
-    --line: #e5e7eb; --accent: #2563eb; --danger: #dc2626; --warn: #d97706;
+    --line: #e5e7eb; --accent: #2563eb; --danger: #dc2626; --warn: #d97706; --ok: #059669;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #111418; --card: #1b1f24; --text: #e6e8eb; --sub: #9aa3ad; --line: #2b3138; }
@@ -21,9 +21,12 @@
     font: 16px/1.45 -apple-system, "Noto Sans KR", "Malgun Gothic", sans-serif;
     padding: env(safe-area-inset-top) 0 calc(90px + env(safe-area-inset-bottom));
   }
-  header { padding: 18px 16px 6px; display: flex; align-items: baseline; justify-content: space-between; }
+  header { padding: 18px 16px 2px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   h1 { font-size: 24px; margin: 0; }
   #count { color: var(--sub); font-size: 14px; }
+  #sync { padding: 0 16px; font-size: 12px; color: var(--sub); min-height: 18px; }
+  #sync.ok { color: var(--ok); }
+  #sync.err { color: var(--danger); }
   .tabs { display: flex; gap: 6px; padding: 8px 16px; }
   .tabs button {
     flex: 1; padding: 8px 0; border: 1px solid var(--line); border-radius: 10px;
@@ -46,30 +49,42 @@
   .meta { font-size: 12px; color: var(--sub); margin-top: 2px; }
   .meta .late { color: var(--danger); font-weight: 600; }
   .meta .soon { color: var(--warn); font-weight: 600; }
+  .num { color: var(--sub); font-size: 13px; margin-right: 4px; }
   .star { color: #f59e0b; }
   .del { border: none; background: none; color: var(--sub); font-size: 20px; padding: 4px 6px; }
   .empty { text-align: center; color: var(--sub); padding: 40px 0; }
-  .group { font-size: 13px; color: var(--sub); padding: 10px 16px 0; }
-  form {
+  form#form {
     position: fixed; left: 0; right: 0; bottom: 0; background: var(--card);
     border-top: 1px solid var(--line); padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     display: grid; grid-template-columns: 1fr auto; gap: 8px;
   }
-  form input[type=text] {
+  input[type=text], input[type=password] {
     font-size: 16px; padding: 11px 12px; border-radius: 10px;
-    border: 1px solid var(--line); background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%;
   }
-  form .row { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--sub); }
-  form input[type=date] {
+  form .row { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--sub); flex-wrap: wrap; }
+  input[type=date], input[type=time] {
     padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
     background: var(--bg); color: var(--text); font-size: 14px;
   }
   .add { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 0 18px; font-size: 16px; }
-  .tools { display: flex; gap: 8px; justify-content: center; padding: 16px; }
+  .tools { display: flex; gap: 8px; justify-content: center; padding: 16px; flex-wrap: wrap; }
   .tools button {
     border: 1px solid var(--line); background: var(--card); color: var(--sub);
     border-radius: 8px; padding: 6px 10px; font-size: 13px;
   }
+  dialog {
+    border: none; border-radius: 14px; padding: 18px; width: min(92vw, 420px);
+    background: var(--card); color: var(--text);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog h2 { font-size: 18px; margin: 0 0 6px; }
+  dialog p { font-size: 13px; color: var(--sub); margin: 4px 0 12px; }
+  dialog label { display: block; font-size: 13px; color: var(--sub); margin: 10px 0 4px; }
+  dialog .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  dialog .btns button { border-radius: 8px; padding: 8px 14px; font-size: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  dialog .btns .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  dialog .btns .danger { color: var(--danger); margin-right: auto; }
 </style>
 </head>
 <body>
@@ -77,6 +92,7 @@
   <h1>할 일</h1>
   <span id="count"></span>
 </header>
+<div id="sync"></div>
 <div class="tabs">
   <button data-f="todo" class="on">남은 일</button>
   <button data-f="all">전체</button>
@@ -84,10 +100,10 @@
 </div>
 <div id="list"></div>
 <div class="tools">
+  <button id="refresh">새로고침</button>
+  <button id="settings">동기화 설정</button>
   <button id="clearDone">완료 항목 지우기</button>
   <button id="export">백업 저장</button>
-  <button id="import">백업 불러오기</button>
-  <input type="file" id="file" accept="application/json" hidden>
 </div>
 
 <form id="form" autocomplete="off">
@@ -95,31 +111,142 @@
   <button class="add" type="submit">추가</button>
   <div class="row">
     마감 <input type="date" id="due">
+    <input type="time" id="time">
     <label><input type="checkbox" id="imp"> 중요</label>
   </div>
 </form>
 
+<dialog id="dlg">
+  <form method="dialog" id="dlgForm">
+    <h2>비서봇 동기화</h2>
+    <p>비공개 GitHub 저장소의 할 일 목록을 회사 비서봇과 같이 씁니다. 토큰은 이 기기에만 저장됩니다.</p>
+    <label for="repo">저장소 (아이디/이름)</label>
+    <input type="text" id="repo" placeholder="seongtae87/todo-data" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label for="token">접근 토큰 (fine-grained, 이 저장소 Contents 읽기·쓰기)</label>
+    <input type="password" id="token" placeholder="github_pat_..." autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="btns">
+      <button type="button" class="danger" id="disconnect">연결 끊기</button>
+      <button value="cancel">취소</button>
+      <button value="ok" class="primary">저장</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
-const KEY = "todo-items-v1";
+// 데이터 형식은 회사 비서봇(work-tasks)과 같다: { next_id, tasks: [{ id, title, due, time, prio, note, done, ... }] }
+const LOCAL_KEY = "todo-db-v2";        // 동기화 안 할 때 기기 저장
+const CACHE_KEY = "todo-remote-cache"; // 동기화할 때 마지막으로 받은 목록 (오프라인 표시용)
+const CFG_KEY = "todo-sync-config";
+const FILE = "tasks.json";
 const $ = (s) => document.querySelector(s);
 let filter = "todo";
-let items = load();
+let cfg = readJSON(CFG_KEY, null);
+let db = cfg ? readJSON(CACHE_KEY, emptyDB()) : loadLocal();
+let busy = false;
 
-function load() {
-  const raw = localStorage.getItem(KEY);
-  return raw ? JSON.parse(raw) : [];
+function emptyDB() { return { next_id: 1, tasks: [] }; }
+function readJSON(k, dflt) {
+  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : dflt; } catch { return dflt; }
 }
-function save() { localStorage.setItem(KEY, JSON.stringify(items)); }
+function writeJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+function loadLocal() {
+  const v2 = readJSON(LOCAL_KEY, null);
+  if (v2) return v2;
+  // 예전 버전(todo-items-v1) 목록이 있으면 새 형식으로 옮김
+  const out = emptyDB();
+  for (const t of readJSON("todo-items-v1", [])) {
+    out.tasks.push({ id: out.next_id++, title: t.text, due: t.due || null, time: null,
+                     prio: t.imp ? "high" : "normal", note: null, done: !!t.done });
+  }
+  writeJSON(LOCAL_KEY, out);
+  return out;
+}
+
+// ---------- GitHub (비공개 저장소) ----------
+
+const enc = (s) => { let x = ""; new TextEncoder().encode(s).forEach((c) => x += String.fromCharCode(c)); return btoa(x); };
+const dec = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, "")), (c) => c.charCodeAt(0)));
+
+function gh(method, body) {
+  return fetch(`https://api.github.com/repos/${cfg.repo}/contents/${FILE}`, {
+    method,
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${cfg.token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+async function pull() {
+  const r = await gh("GET");
+  if (r.status === 404) return { data: emptyDB(), sha: null };
+  if (r.status === 401 || r.status === 403) throw new Error("토큰이 틀렸거나 이 저장소 권한이 없어요");
+  if (!r.ok) throw new Error(`불러오기 실패 (${r.status})`);
+  const j = await r.json();
+  return { data: JSON.parse(dec(j.content)), sha: j.sha };
+}
+
+// 최신 목록을 받아서 바꾸고 올림. 그 사이 봇이 바꿨으면(sha 충돌) 다시 받아서 재시도.
+async function mutate(fn, message) {
+  if (!cfg) { fn(db); writeJSON(LOCAL_KEY, db); render(); return; }
+  setSync("저장 중…");
+  for (let i = 0; i < 3; i++) {
+    const { data, sha } = await pull();
+    fn(data);
+    const body = { message: "app: " + message, content: enc(JSON.stringify(data, null, 1)) };
+    if (sha) body.sha = sha;
+    const r = await gh("PUT", body);
+    if (r.ok) { db = data; writeJSON(CACHE_KEY, db); render(); setSync(syncedText(), "ok"); return; }
+    if (r.status !== 409 && r.status !== 422) throw new Error(`저장 실패 (${r.status})`);
+  }
+  throw new Error("다른 곳에서 동시에 바뀌어 저장 못 했어요. 새로고침 후 다시 해 주세요");
+}
+
+async function refresh() {
+  if (!cfg || busy) return;
+  busy = true;
+  setSync("불러오는 중…");
+  try {
+    db = (await pull()).data;
+    writeJSON(CACHE_KEY, db);
+    render();
+    setSync(syncedText(), "ok");
+  } catch (e) {
+    setSync("⚠ " + e.message + " — 마지막으로 받은 목록을 보여주고 있어요", "err");
+  } finally { busy = false; }
+}
+
+function syncedText() {
+  const d = new Date();
+  return `비서봇과 동기화됨 · ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+function setSync(text, cls = "") {
+  const el = $("#sync");
+  el.textContent = cfg ? text : "이 기기에만 저장 중 (동기화 설정 안 됨)";
+  el.className = cfg ? cls : "";
+}
+
+async function act(fn, message) {
+  try { await mutate(fn, message); } catch (e) { setSync("⚠ " + e.message, "err"); alert(e.message); }
+}
+
+// ---------- 화면 ----------
 
 function today() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
-function dueLabel(due) {
-  if (!due) return "";
-  const [y, m, d] = due.split("-").map(Number);
+function dueLabel(t) {
+  if (!t.due) return "";
+  const [y, m, d] = t.due.split("-").map(Number);
   const diff = Math.round((new Date(y, m - 1, d) - today()) / 86400000);
-  const txt = `${m}/${d}`;
+  const wd = "일월화수목금토"[new Date(y, m - 1, d).getDay()];
+  const txt = `${m}/${d}(${wd})${t.time ? " " + t.time : ""}`;
+  if (t.done) return txt;
   if (diff < 0) return `<span class="late">${txt} · ${-diff}일 지남</span>`;
   if (diff === 0) return `<span class="late">${txt} · 오늘</span>`;
   if (diff <= 3) return `<span class="soon">${txt} · D-${diff}</span>`;
@@ -127,19 +254,20 @@ function dueLabel(due) {
 }
 function sortKey(a, b) {
   if (a.done !== b.done) return a.done ? 1 : -1;
-  if (a.imp !== b.imp) return a.imp ? -1 : 1;
-  return (a.due || "9999") < (b.due || "9999") ? -1 : (a.due || "9999") > (b.due || "9999") ? 1 : a.id - b.id;
+  const ka = (a.due || "9999-12-31") + (a.time || "99:99"), kb = (b.due || "9999-12-31") + (b.time || "99:99");
+  if (ka !== kb) return ka < kb ? -1 : 1;
+  if ((a.prio === "high") !== (b.prio === "high")) return a.prio === "high" ? -1 : 1;
+  return a.id - b.id;
 }
 function esc(s) {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
 function render() {
-  const shown = items
+  const shown = db.tasks
     .filter((t) => filter === "all" || (filter === "done" ? t.done : !t.done))
     .sort(sortKey);
-  const left = items.filter((t) => !t.done).length;
-  $("#count").textContent = `남은 일 ${left}개`;
+  $("#count").textContent = `남은 일 ${db.tasks.filter((t) => !t.done).length}개`;
   if (!shown.length) {
     $("#list").innerHTML = `<div class="empty">${filter === "done" ? "완료한 일이 없어요" : "할 일이 없어요 🎉"}</div>`;
     return;
@@ -148,40 +276,53 @@ function render() {
     <li class="${t.done ? "done" : ""}" data-id="${t.id}">
       <button class="chk" data-act="toggle">${t.done ? "✓" : ""}</button>
       <div class="body" data-act="edit">
-        <div class="title">${t.imp ? '<span class="star">★</span> ' : ""}${esc(t.text)}</div>
-        ${t.due ? `<div class="meta">${dueLabel(t.due)}</div>` : ""}
+        <div class="title"><span class="num">${t.id}.</span>${t.prio === "high" ? '<span class="star">★</span> ' : ""}${esc(t.title)}</div>
+        ${t.due || t.note ? `<div class="meta">${dueLabel(t)}${t.note ? (t.due ? " · " : "") + esc(t.note) : ""}</div>` : ""}
       </div>
       <button class="del" data-act="del" aria-label="삭제">×</button>
     </li>`).join("") + "</ul>";
 }
 
+const now = () => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const find = (data, id) => data.tasks.find((x) => x.id === id);
+
 $("#list").addEventListener("click", (e) => {
-  const act = e.target.closest("[data-act]")?.dataset.act;
+  const a = e.target.closest("[data-act]")?.dataset.act;
   const li = e.target.closest("li");
-  if (!act || !li) return;
-  const t = items.find((x) => x.id === Number(li.dataset.id));
-  if (act === "toggle") t.done = !t.done;
-  if (act === "del") {
-    if (!confirm(`"${t.text}" 삭제할까요?`)) return;
-    items = items.filter((x) => x !== t);
+  if (!a || !li) return;
+  const id = Number(li.dataset.id);
+  const t = find(db, id);
+  if (!t) return;
+  if (a === "toggle") {
+    act((d) => { const x = find(d, id); if (x) { x.done = !x.done; x.done_at = x.done ? now() : null; } },
+        `${t.done ? "되돌림" : "완료"} ${id}`);
   }
-  if (act === "edit") {
-    const text = prompt("내용 수정", t.text);
-    if (text === null) return;
-    if (text.trim()) t.text = text.trim();
+  if (a === "del") {
+    if (!confirm(`"${t.title}" 삭제할까요?`)) return;
+    act((d) => { d.tasks = d.tasks.filter((x) => x.id !== id); }, `삭제 ${id}`);
+  }
+  if (a === "edit") {
+    const title = prompt("내용 수정", t.title);
+    if (title === null) return;
     const due = prompt("마감일 (예: 2026-11-10, 비우면 없음)", t.due || "");
-    if (due !== null) t.due = /^\d{4}-\d{2}-\d{2}$/.test(due.trim()) ? due.trim() : "";
+    if (due === null) return;
+    act((d) => {
+      const x = find(d, id);
+      if (!x) return;
+      if (title.trim()) x.title = title.trim();
+      x.due = /^\d{4}-\d{2}-\d{2}$/.test(due.trim()) ? due.trim() : null;
+    }, `수정 ${id}`);
   }
-  save(); render();
 });
 
 $("#form").addEventListener("submit", (e) => {
   e.preventDefault();
-  const text = $("#text").value.trim();
-  if (!text) return;
-  items.push({ id: Date.now(), text, due: $("#due").value, imp: $("#imp").checked, done: false });
-  $("#text").value = ""; $("#due").value = ""; $("#imp").checked = false;
-  save(); render();
+  const title = $("#text").value.trim();
+  if (!title) return;
+  const item = { title, due: $("#due").value || null, time: $("#time").value || null,
+                 prio: $("#imp").checked ? "high" : "normal", note: null, done: false };
+  $("#text").value = ""; $("#due").value = ""; $("#time").value = ""; $("#imp").checked = false;
+  act((d) => { d.tasks.push({ id: d.next_id++, ...item, created: now() }); }, "추가 " + title);
 });
 
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
@@ -190,30 +331,62 @@ document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("cli
 }));
 
 $("#clearDone").addEventListener("click", () => {
-  const n = items.filter((t) => t.done).length;
+  const n = db.tasks.filter((t) => t.done).length;
   if (!n || !confirm(`완료 항목 ${n}개를 지울까요?`)) return;
-  items = items.filter((t) => !t.done); save(); render();
+  act((d) => { d.tasks = d.tasks.filter((t) => !t.done); }, `완료 ${n}개 정리`);
 });
 $("#export").addEventListener("click", () => {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(items, null, 1)], { type: "application/json" }));
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(db, null, 1)], { type: "application/json" }));
   a.download = `할일백업_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
 });
-$("#import").addEventListener("click", () => $("#file").click());
-$("#file").addEventListener("change", async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
+$("#refresh").addEventListener("click", () => cfg ? refresh() : render());
+
+// ---------- 동기화 설정 ----------
+
+$("#settings").addEventListener("click", () => {
+  $("#repo").value = cfg?.repo || "seongtae87/todo-data";
+  $("#token").value = cfg?.token || "";
+  $("#dlg").showModal();
+});
+$("#dlg").addEventListener("close", async () => {
+  if ($("#dlg").returnValue !== "ok") return;
+  const repo = $("#repo").value.trim(), token = $("#token").value.trim();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !token) { alert("저장소와 토큰을 확인해 주세요"); return; }
+  const local = cfg ? null : db;
+  cfg = { repo, token };
   try {
-    const data = JSON.parse(await f.text());
-    if (!Array.isArray(data)) throw 0;
-    if (!confirm(`${data.length}개 항목으로 바꿀까요? 지금 목록은 사라집니다.`)) return;
-    items = data; save(); render();
-  } catch { alert("백업 파일을 읽지 못했어요"); }
-  e.target.value = "";
+    const { data } = await pull();
+    writeJSON(CFG_KEY, cfg);
+    db = data;
+    writeJSON(CACHE_KEY, db);
+    render();
+    setSync(syncedText(), "ok");
+    const left = local ? local.tasks.filter((t) => !t.done) : [];
+    if (left.length && confirm(`이 기기에만 있던 할 일 ${left.length}개를 동기화 목록에 합칠까요?`)) {
+      await act((d) => { for (const t of left) d.tasks.push({ ...t, id: d.next_id++ }); }, `기기 목록 ${left.length}개 합침`);
+    }
+  } catch (e) {
+    cfg = readJSON(CFG_KEY, null);
+    alert("연결 실패: " + e.message);
+  }
+});
+$("#disconnect").addEventListener("click", () => {
+  if (!confirm("동기화를 끊을까요? 토큰이 이 기기에서 지워지고, 이 기기 저장 모드로 돌아갑니다.")) return;
+  localStorage.removeItem(CFG_KEY);
+  localStorage.removeItem(CACHE_KEY);
+  cfg = null;
+  db = loadLocal();
+  $("#dlg").close();
+  render(); setSync("");
 });
 
-save(); render();
+// 앱을 다시 열 때마다 최신 목록 받기
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+
+render(); setSync(cfg ? "마지막으로 받은 목록" : "");
+refresh();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
 </script>
 </body>
